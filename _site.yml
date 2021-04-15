@@ -1,3 +1,16 @@
----
-title: test site
----
+name: "Sophie Bass's Website"
+output_dir: "."
+navbar:
+  title: "Sophie Bass"
+  left:
+    - text: "Home"
+      href: index.html
+    - text: "Project"
+      href: project.html
+    - text: "About"
+      href: about.html
+
+output:
+  html_document:
+    theme: simplex
+    highlight: textmate
