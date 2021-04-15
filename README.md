@@ -1,2 +1,2 @@
-# sophiebass_github_io
-
+# sophiebass.github.io
+## my personal website
