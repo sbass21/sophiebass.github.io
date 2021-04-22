@@ -3,14 +3,14 @@ output_dir: "."
 navbar:
   title: "Sophie Bass"
   left:
-    - text: "Home"
-      href: index.html
-    - text: "Project"
-      href: project.html
-    - text: "About"
-      href: about.html
     - text: "Introduction"
       href: Introduction.html
+    - text: "Methodology"
+      href: Methodology.html
+    - text: "Results"
+      href: Results.html
+    - text: "Conclusion"
+      href: Conclusion.html
 
 output:
   html_document:
