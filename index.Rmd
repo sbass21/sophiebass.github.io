@@ -6,6 +6,7 @@ output: html_document
 ---
 
 $$\\[.01in]$$
+
 #### This is a website created for BDS 516 Homework #9. 
 
 
