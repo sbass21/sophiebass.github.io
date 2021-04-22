@@ -9,6 +9,8 @@ navbar:
       href: project.html
     - text: "About"
       href: about.html
+    - text: "Introduction"
+      href: Introduction.html
 
 output:
   html_document:
