@@ -311,7 +311,455 @@ $(document).ready(function () {
 </div>
 
 
-<p>These are my results</p>
+<p><span class="math display">\[\\[.01in]\]</span></p>
+<div id="packages" class="section level4">
+<h4>Packages</h4>
+<pre class="r"><code>library(rtweet)
+library(httpuv)
+library(tidytext)
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(scales)
+library(readr)
+library(syuzhet)
+library(mlbench)
+library(caret)
+library(vtreat)
+library(InformationValue)</code></pre>
+</div>
+<div id="set-up" class="section level4">
+<h4>Set up</h4>
+<pre class="r"><code>## Setting up authentication to get to twitter
+twitter_token &lt;- create_token(
+  app = &quot;Classwork for BDS 516&quot;,
+  consumer_key = &quot;W30dWiQN5oTkPBRGE9CYEyidm&quot;,
+  consumer_secret = &quot;23xMeQn3rvircKaGWcbLlO7lhrXKIanpH3nsZMrzyZUD3Pe3JF&quot;,
+  access_token = &quot;1148924254966226945-jBqguRa05UmaF4HsujuERFo6KeBwtu&quot;,
+  access_secret = &quot;nAi2Y3fD1k6odmn1OVmuM6R32Q7UBVxiMpkWTEypckEWz&quot;)
+
+## Getting tweets from Obama and Kanye 
+obama_raw &lt;- get_timeline(&quot;@BarackObama&quot;, n = 3200)
+kanye_raw &lt;- get_timeline(&quot;@kanyewest&quot;, n = 3200)
+
+## Cleaning the data sets 
+
+# Obama
+obama_clean &lt;- obama_raw %&gt;% select(&quot;source&quot;, &quot;status_id&quot;, &quot;text&quot;,&quot;created_at&quot;, 
+                                &quot;retweet_count&quot;, &quot;favorite_count&quot;, &quot;is_retweet&quot;, &quot;screen_name&quot;)
+# Kanye
+kanye_clean &lt;- kanye_raw %&gt;% select(&quot;source&quot;, &quot;status_id&quot;, &quot;text&quot;,&quot;created_at&quot;, 
+                                &quot;retweet_count&quot;, &quot;favorite_count&quot;, &quot;is_retweet&quot;, &quot;screen_name&quot;)
+
+## Saving files as csvs for ease of use
+obama_clean &lt;- as.data.frame(obama_clean)
+write.csv(x=obama_clean, file=&quot;obama_tweets.csv&quot;)
+kanye_clean &lt;- as.data.frame(kanye_clean)
+write.csv(x=kanye_clean, file=&quot;kanye_tweets.csv&quot;)</code></pre>
+<pre class="r"><code>## Loading in csv files
+setwd(&quot;~/Documents/*MBDS/BDS 516/Data&quot;)
+obama &lt;- read_csv(&quot;obama_tweets.csv&quot;)
+kanye &lt;- read_csv(&quot;kanye_tweets.csv&quot;)</code></pre>
+<p><span class="math display">\[\\[.01in]\]</span></p>
+</div>
+<div id="feature-extraction" class="section level3">
+<h3>Feature Extraction</h3>
+<div id="source" class="section level4">
+<h4><strong><em>(1.) Source</em></strong></h4>
+<pre class="r"><code>obama %&gt;% count(source) %&gt;% arrange(-n)
+kanye %&gt;% count(source) %&gt;% arrange(-n)</code></pre>
+<pre><code># A tibble: 5 x 2
+  source                   n
+  &lt;chr&gt;                &lt;int&gt;
+1 Twitter Web Client    2446
+2 Twitter for iPhone     473
+3 Twitter Web App        199
+4 Twitter Media Studio    76
+5 Thunderclap              5
+# A tibble: 2 x 2
+  source                 n
+  &lt;chr&gt;              &lt;int&gt;
+1 Twitter for iPhone  1830
+2 Twitter Web App       38</code></pre>
+<p>Obama most frequently tweets from a desktop/laptop while Kanye most frequently tweets from an iPhone.</p>
+</div>
+<div id="time-of-day" class="section level4">
+<h4><strong><em>(2.) Time of Day</em></strong></h4>
+<pre class="r"><code>merged_df &lt;- rbind(obama, kanye)
+
+merged_df %&gt;% group_by(screen_name) %&gt;% 
+  count(hour = hour(with_tz(created_at, &quot;EST&quot;))) %&gt;%
+  mutate(percent = n/sum(n)) %&gt;%
+  ggplot(aes(x = hour, y = percent, color = screen_name)) +
+  labs(x = &quot;Hour of day (EST)&quot;, y = &quot;% of tweets&quot;, color = &quot;&quot;) + 
+  scale_y_continuous(labels = percent_format()) +
+  geom_line()</code></pre>
+<p><img src="Results_files/figure-html/unnamed-chunk-6-1.png" width="528" style="display: block; margin: auto;" /></p>
+<p>The vast majority of Obama’s tweets are posted between 10am and 4pm, while, Kanye’s tweets have much more variability.</p>
+</div>
+<div id="quotes" class="section level4">
+<h4><strong><em>(3.) Quotes</em></strong></h4>
+<pre class="r"><code>## Plot of tweets with quotes vs. no quotes
+merged_df %&gt;% group_by(screen_name) %&gt;% 
+  count(quoted = ifelse(str_detect(text, &#39;^&quot;&#39;), &quot;Quoted&quot;, &quot;Not quoted&quot;)) %&gt;%
+  ggplot(aes(x = screen_name, y = n, fill = quoted)) +
+  geom_bar(stat = &quot;identity&quot;, position = &quot;dodge&quot;) +
+  labs(x = &quot;&quot;, y = &quot;Number of tweets&quot;, fill = &quot;&quot;) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  ggtitle(&#39;Whether tweets start with a quotation mark (&quot;)&#39;)</code></pre>
+<p><img src="Results_files/figure-html/unnamed-chunk-7-1.png" width="528" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># Table of tweets with quotes vs. no quotes
+merged_df %&gt;% group_by(screen_name) %&gt;% 
+  count(quoted = ifelse(str_detect(text, &#39;^&quot;&#39;), &quot;Quoted&quot;, &quot;Not quoted&quot;)) %&gt;%
+  mutate(percent_quote = n/sum(n)*100)</code></pre>
+<pre><code># A tibble: 4 x 4
+# Groups:   screen_name [2]
+  screen_name quoted         n percent_quote
+  &lt;chr&gt;       &lt;chr&gt;      &lt;int&gt;         &lt;dbl&gt;
+1 BarackObama Not quoted  2657        83.1  
+2 BarackObama Quoted       542        16.9  
+3 kanyewest   Not quoted  1865        99.8  
+4 kanyewest   Quoted         3         0.161</code></pre>
+<p>Both Obama and Kanye do not quote very much in their tweets; however, ~17% of Obama’s tweets use quotes, while Kanye quotes less than 1% of the time.</p>
+</div>
+<div id="pictures" class="section level4">
+<h4><strong><em>(4.) Pictures</em></strong></h4>
+<pre class="r"><code>merged_df %&gt;%
+  group_by(screen_name) %&gt;% 
+  filter(!str_detect(text, &#39;^&quot;&#39;)) %&gt;%
+  count(picture = ifelse(str_detect(text, &quot;t.co&quot;),
+                         &quot;Picture/link&quot;, &quot;No picture/link&quot;)) %&gt;% 
+  mutate(percent_picture = n/sum(n)*100)</code></pre>
+<pre><code># A tibble: 4 x 4
+# Groups:   screen_name [2]
+  screen_name picture             n percent_picture
+  &lt;chr&gt;       &lt;chr&gt;           &lt;int&gt;           &lt;dbl&gt;
+1 BarackObama No picture/link   210            7.90
+2 BarackObama Picture/link     2447           92.1 
+3 kanyewest   No picture/link   842           45.1 
+4 kanyewest   Picture/link     1023           54.9 </code></pre>
+<p>The vast majority of Obama’s tweets include a picture or link (92%), while only 55% of Kanye’s tweets contain a picture or link.</p>
+</div>
+<div id="re-tweets" class="section level4">
+<h4><strong><em>(5.) Re-tweets</em></strong></h4>
+<pre class="r"><code>merged_df %&gt;% group_by(screen_name) %&gt;% 
+  count(is_retweet) %&gt;% 
+  mutate(perc_retweet = n/sum(n)*100)</code></pre>
+<pre><code># A tibble: 4 x 4
+# Groups:   screen_name [2]
+  screen_name is_retweet     n perc_retweet
+  &lt;chr&gt;       &lt;lgl&gt;      &lt;int&gt;        &lt;dbl&gt;
+1 BarackObama FALSE       2847         89.0
+2 BarackObama TRUE         352         11.0
+3 kanyewest   FALSE       1670         89.4
+4 kanyewest   TRUE         198         10.6</code></pre>
+<p>Obama and Kanye have nearly the same percentage of tweets that are re-tweets.</p>
+</div>
+<div id="re-tweet-counts-favorite-counts" class="section level4">
+<h4><strong><em>(6.) Re-tweet Counts &amp; Favorite Counts</em></strong></h4>
+<pre class="r"><code>merged_df %&gt;% group_by(screen_name) %&gt;% 
+  summarize(avg_retweet = mean(retweet_count),
+            avg_fav = mean(favorite_count))</code></pre>
+<pre><code># A tibble: 2 x 3
+  screen_name avg_retweet avg_fav
+* &lt;chr&gt;             &lt;dbl&gt;   &lt;dbl&gt;
+1 BarackObama      11367.  58068.
+2 kanyewest         9314.  48920.</code></pre>
+<p>On average, a tweet posted by Obama is re-tweeted ~11,4000 times and is favorited by 60,000 people. For Kanye, the average tweet is re-tweeted ~9,000 times and favorited by ~50,000 people. However, these differences do not seem to be a meaningful metric of comparison given the fact that Obama has 130 million twitter followers, while Kanye has only 30 million.</p>
+</div>
+<div id="sentiment" class="section level4">
+<h4><strong><em>(7.) Sentiment</em></strong></h4>
+<pre class="r"><code>merged_sentiment &lt;- merged_df %&gt;% 
+  mutate(text2 = str_replace_all(text, &quot;[^[:alpha:]]&quot;, &quot; &quot;), # removes all non-alphabetic characters
+         get_nrc_sentiment(text2)) # getting nrc scores for tweet texts</code></pre>
+<pre class="r"><code>merged_sentiment %&gt;% 
+  group_by(screen_name) %&gt;% 
+  summarize(anger = mean(anger),
+            anticipation = mean(anticipation),
+            fear = mean(fear),
+            disgust = mean(disgust),
+            joy = mean(joy),
+            sadness = mean(sadness),
+            surprise = mean(surprise),
+            trust = mean(trust),
+            negative = mean(negative),
+            positive = mean(positive))</code></pre>
+<pre><code>  screen_name anger anticipation  fear disgust   joy sadness surprise trust negative positive
+1 BarackObama 0.315        0.738 0.452   0.100 0.565   0.233    0.284 1.247    0.516    1.778
+2   kanyewest 0.148        0.305 0.213   0.071 0.376   0.153    0.120 0.414    0.268    0.742</code></pre>
+<p>Obama’s tweets (on average) seemingly score higher across all sentiment scores. This is particularly true for “anticipation”, “trust”, and “positive” sentiments</p>
+<p><span class="math display">\[\\[.01in]\]</span></p>
+</div>
+</div>
+<div id="part-a" class="section level1">
+<h1>Part A</h1>
+<p><strong><em>Develop an algorithm that allows to predict who of the politicians tweeted using just the information in the text of the tweet and the time of the tweets. You are not allowed to use the information about the user. You can use sentiments, individual words, punctuation and anything else as a source of features.</em></strong></p>
+<div id="based-off-the-feature-extraction-above-we-believe-that-the-features-which-most-contribute-to-the-prediction-of-whether-a-tweet-was-authored-by-obama-vs.-kanye-are-source-quotes-pictures-and-sentiment-scores.-we-now-will-develop-a-classification-algorithm-using-logistic-regression-model-to-predict-the-probability-of-a-tweet-being-authored-by-obama.-as-such-the-outcome-variable-will-be-a-tweet-by-obama-yes-or-no-and-the-predictor-variables-will-be-some-combination-of-the-features-mentioned-above.-to-that-end-we-will-run-several-logistic-regression-models-but-only-include-the-model-with-the-greatest-predictive-power." class="section level5">
+<h5>Based off the feature extraction above, we believe that the features which most contribute to the prediction of whether a tweet was authored by Obama vs. Kanye are: <strong>source, quotes, pictures, and sentiment scores.</strong> We now will develop a classification algorithm using <strong>logistic regression model</strong> to predict the probability of a tweet being authored by Obama. As such, the <em>outcome variable</em> will be a tweet by Obama (yes or no) and the <em>predictor variables</em> will be some combination of the features mentioned above. To that end, we will run several logistic regression models, but only include the model with the greatest predictive power.</h5>
+<pre class="r"><code>## Setting up data frame for logistic regression 
+obama_kanye &lt;- merged_sentiment
+
+# Changing names of sources (before filtering)
+obama_kanye$source[obama_kanye$source==&quot;Twitter Web Client&quot;] &lt;- &quot;web&quot;
+obama_kanye$source[obama_kanye$source==&quot;Twitter for iPhone&quot;] &lt;- &quot;iphone&quot;
+
+obama_kanye2 &lt;- obama_kanye %&gt;%
+  select(screen_name, source, created_at, text, status_id,
+         anger, anticipation, fear, disgust, joy, sadness, surprise, trust, negative, positive) %&gt;% 
+  # filtering twitter sources for only web/iPhone
+  filter(source %in% c(&quot;web&quot;, &quot;iphone&quot;)) %&gt;% 
+  # creating variables for time of day, whether the tweet uses a quote, and whether
+  # there is a picture or link in the tweet
+  mutate(hour = hour(with_tz(created_at, &quot;EST&quot;)),
+         quoted = ifelse(str_detect(text, &#39;^&quot;&#39;), &quot;quote&quot;, &quot;NO_quote&quot;),
+         picture = ifelse(str_detect(text, &quot;t.co&quot;), &quot;picture_link&quot;, &quot;NO_picture_link&quot;), 
+         is_obama = case_when(screen_name == &quot;BarackObama&quot; ~ 1,
+                              screen_name == &quot;kanyewest&quot; ~ 0))
+
+# Selecting variables for regression
+obama_kanye3 &lt;- obama_kanye2 %&gt;% 
+  select(is_obama, screen_name, source, hour, quoted, picture,
+         anger, anticipation, fear, disgust, joy, sadness, surprise, trust, negative, positive)</code></pre>
+</div>
+<div id="logistic-regression-model" class="section level4">
+<h4><strong>Logistic Regression Model</strong></h4>
+<pre class="r"><code>model &lt;- glm(is_obama ~  factor(quoted) + factor(picture) +
+                anticipation + fear + joy + trust + positive,
+             family = &quot;binomial&quot;, 
+             data = obama_kanye3)
+
+summary(model)</code></pre>
+<pre><code>
+Call:
+glm(formula = is_obama ~ factor(quoted) + factor(picture) + anticipation + 
+    fear + joy + trust + positive, family = &quot;binomial&quot;, data = obama_kanye3)
+
+Deviance Residuals: 
+    Min       1Q   Median       3Q      Max  
+-4.2721  -0.5638   0.1219   0.6557   2.7422  
+
+Coefficients:
+                            Estimate Std. Error z value Pr(&gt;|z|)    
+(Intercept)                 -3.73624    0.14608 -25.577  &lt; 2e-16 ***
+factor(quoted)quote          6.68145    0.72076   9.270  &lt; 2e-16 ***
+factor(picture)picture_link  3.40283    0.13426  25.345  &lt; 2e-16 ***
+anticipation                 0.55618    0.08228   6.759 1.38e-11 ***
+fear                         0.57846    0.07464   7.750 9.16e-15 ***
+joy                         -1.15137    0.09472 -12.156  &lt; 2e-16 ***
+trust                        0.73190    0.07298  10.029  &lt; 2e-16 ***
+positive                     0.82058    0.06216  13.201  &lt; 2e-16 ***
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 6331.6  on 4748  degrees of freedom
+Residual deviance: 3750.2  on 4741  degrees of freedom
+AIC: 3766.2
+
+Number of Fisher Scoring iterations: 8</code></pre>
+<pre class="r"><code>exp(model$coefficients)</code></pre>
+<pre><code>                (Intercept)         factor(quoted)quote factor(picture)picture_link 
+                 0.02384356                797.47143283                 30.04893338 
+               anticipation                        fear                         joy 
+                 1.74400434                  1.78329704                  0.31620393 
+                      trust                    positive 
+                 2.07902310                  2.27180811 </code></pre>
+</div>
+<div id="interpretation-of-model" class="section level4">
+<h4><strong><em>Interpretation of Model</em></strong></h4>
+<ul>
+<li>“<strong>quoted</strong>”
+<ul>
+<li>All else equal, tweets with quotes have a ~80,000% greater odds of being Obama’s tweets.</li>
+<li><em>Calculation:</em> odds = (797.47143283 - 1)*100 = 79647.14</li>
+</ul></li>
+<li>“<strong>picture_link</strong>”
+<ul>
+<li>All else equal, tweets with pictures or links have a ~3,000% greater odds of being Obama’s tweets.</li>
+<li><em>Calculation:</em> odds = (30.04893338 - 1)*100 = 2904.893</li>
+</ul></li>
+<li>“<strong>anticipation</strong>”
+<ul>
+<li>All else equal, a one-unit increase in the sentiment score for anticipation increases the odds of the tweet being authored by Obama by 74%.</li>
+<li><em>Calculation:</em> odds = (1.74400434 - 1)*100 = 74.40043</li>
+</ul></li>
+<li>“<strong>fear</strong>”
+<ul>
+<li>All else equal, a one-unit increase in the sentiment score for fear increases the odds of the tweet being authored by Obama by 78%.</li>
+<li><em>Calculation:</em> odds = 1.78329704 - 1)*100 = 78.3297</li>
+</ul></li>
+<li>“<strong>joy</strong>”
+<ul>
+<li>All else equal, a one-unit increase in the sentiment score for joy decreases the odds of the tweet being authored by Obama by 68%.</li>
+<li><em>Calculation:</em> odds = (0.31620393 - 1)*100 = -68.37961</li>
+</ul></li>
+<li>“<strong>trust</strong>”
+<ul>
+<li>All else equal, a one-unit increase in the sentiment score for trust increases the odds of the tweet being authored by Obama by 108%.</li>
+<li><em>Calculation:</em> odds = (2.07902310 - 1)*100 = 107.9023</li>
+</ul></li>
+<li>“<strong>positive</strong>”
+<ul>
+<li>All else equal, a one-unit increase in the sentiment score for positive increases the odds of the tweet being authored by Obama by 127%.</li>
+<li><em>Calculation:</em> odds = (2.27180811 - 1)*100 = 127.1808</li>
+</ul></li>
+</ul>
+<p><span class="math display">\[\\[.01in]\]</span></p>
+</div>
+</div>
+<div id="part-b" class="section level1">
+<h1>Part B</h1>
+<p><strong><em>Apply the algorithm to new tweets from both users to estimate how well the predictions work.</em></strong></p>
+<div id="given-that-our-logistic-regression-model-was-developed-using-all-of-the-tweets-ever-posted-by-kanye-west-n-1868-rather-than-applying-the-algorithm-to-a-new-tweets-we-will-evaluate-the-algorithm-using-a-train-test-split." class="section level5">
+<h5>Given that our logistic regression model was developed using <em>all</em> of the tweets ever posted by Kanye West (n = 1,868), rather than applying the algorithm to a new tweets, we will evaluate the algorithm using a <strong>train-test split</strong>.</h5>
+</div>
+<div id="train-test-split-evaluation" class="section level3">
+<h3><strong>Train-Test Split Evaluation</strong></h3>
+<pre class="r"><code># Checking for class bias 
+table(obama_kanye3$is_obama)</code></pre>
+<pre><code>## 
+##    0    1 
+## 1830 2919</code></pre>
+<pre class="r"><code>## Creating train and test data
+
+# Ensuring Train Data draws equal proportions of Obama (1) and Kanye (0))
+set.seed(04917)
+input_ones &lt;- obama_kanye3[which(obama_kanye3$is_obama == 1), ]  # all 1&#39;s
+input_zeros &lt;- obama_kanye3[which(obama_kanye3$is_obama == 0), ]  # all 0&#39;s
+
+# 1&#39;s for training
+input_ones_training_rows &lt;- sample(1:nrow(input_ones), 0.7*nrow(input_ones)) 
+training_ones &lt;- input_ones[input_ones_training_rows, ] 
+
+# 0&#39;s for training. Pick as many 0&#39;s as 1&#39;s
+input_zeros_training_rows &lt;- sample(1:nrow(input_zeros), 0.7*nrow(input_zeros))
+training_zeros &lt;- input_zeros[input_zeros_training_rows, ]
+
+#Row bind the 1&#39;s and 0&#39;s 
+train.data &lt;- rbind(training_ones, training_zeros)  
+
+# Creating Test Data
+test_ones &lt;- input_ones[-input_ones_training_rows, ]
+test_zeros &lt;- input_zeros[-input_zeros_training_rows, ]
+
+# Row bind the 1&#39;s and 0&#39;s 
+test.data &lt;- rbind(test_ones, test_zeros)  
+
+## Building Logistical Model and Predicting on Test Data
+model_train &lt;- glm(is_obama ~  factor(quoted) + factor(picture) +
+                anticipation + fear + joy + trust + positive,
+                data=train.data, 
+                family=binomial(link=&quot;logit&quot;))
+
+predicted &lt;- predict(model_train, test.data, type=&quot;response&quot;)</code></pre>
+</div>
+<div id="model-diagnostics" class="section level3">
+<h3><strong>Model Diagnostics</strong></h3>
+<pre class="r"><code># Optimal prediction probability cutoff 
+optCutOff &lt;- optimalCutoff(test.data$is_obama, predicted)
+optCutOff</code></pre>
+<div id="misclassification-error" class="section level4">
+<h4><strong><em>Misclassification Error</em></strong></h4>
+<pre class="r"><code>misClassError(test.data$is_obama, predicted, threshold = optCutOff)</code></pre>
+<pre><code>[1] 0.1537</code></pre>
+<p>The model’s misclassification error (i.e. the percentage of incorrectly classified instances) is 15%.</p>
+</div>
+<div id="auc-roc-curve" class="section level4">
+<h4><strong><em>AUC-ROC Curve</em></strong></h4>
+<pre class="r"><code>plotROC(test.data$is_obama, predicted)</code></pre>
+<p><img src="Results_files/figure-html/unnamed-chunk-24-1.png" width="528" style="display: block; margin: auto;" /> Our model has an AUC of .9, meaning there is a ~90% chance that the model will be able distinguish between positive class (i.e. Obama’s tweets) and negative class (i.e. Kanye’s tweets)</p>
+</div>
+<div id="sensitivity-and-specificity" class="section level4">
+<h4><strong><em>Sensitivity and Specificity</em></strong></h4>
+<pre class="r"><code>sensitivity(test.data$is_obama, predicted, threshold = optCutOff)
+specificity(test.data$is_obama, predicted, threshold = optCutOff)</code></pre>
+<pre><code>[1] 0.8812785
+[1] 0.7905282</code></pre>
+<p>The model’s true positive rate (i.e. sensitivity) and true negative rate (i.e specificity) are both about 85%.</p>
+<div id="all-in-all-our-model-has-fairly-strong-predictive-ability" class="section level5">
+<h5><strong>All in all, our model has fairly strong predictive ability</strong></h5>
+<p><span class="math display">\[\\[.01in]\]</span></p>
+</div>
+</div>
+</div>
+</div>
+<div id="part-c" class="section level1">
+<h1>Part C</h1>
+<p><strong><em>Try the prediction algorithm with a different set of tweets from unrelated users. Discuss how the algorithm works / breaks in this case.</em></strong></p>
+<div id="in-the-following-section-we-will-apply-our-prediction-algorithm-i.e.-the-trained-logistic-model-created-above-to-a-set-of-tweets-posted-by-the-rapper-drake." class="section level5">
+<h5>In the following section, we will apply our prediction algorithm (i.e. the trained logistic model created above) to a set of tweets posted by the rapper, <strong>Drake</strong>.</h5>
+</div>
+<div id="preparing-a-data-set-of-drake-tweets" class="section level4">
+<h4><strong><em>Preparing a data set of Drake Tweets</em></strong></h4>
+<pre class="r"><code>## Creating a data set for Drake Tweets
+
+# Extracting data from Twitter
+drake_raw &lt;- get_timeline(&quot;@Drake&quot;, n = 3200)
+
+
+# Cleaning the data sets
+drake_clean &lt;- drake_raw %&gt;% select(&quot;source&quot;, &quot;status_id&quot;, &quot;text&quot;,&quot;created_at&quot;, 
+                                &quot;retweet_count&quot;, &quot;favorite_count&quot;, &quot;is_retweet&quot;,
+                                &quot;screen_name&quot;)
+
+drake &lt;- as.data.frame(drake_clean)</code></pre>
+<pre class="r"><code>## Getting sentiment scores
+drake_sentiment &lt;- drake %&gt;% 
+  mutate(text2 = str_replace_all(text, &quot;[^[:alpha:]]&quot;, &quot; &quot;), # removes all non-alphabetic characters
+         get_nrc_sentiment(text2)) # getting nrc scores for tweet texts</code></pre>
+<pre class="r"><code>## Preparing data set for testing
+drake_test &lt;- drake_sentiment
+
+drake_test2 &lt;- drake_test %&gt;%
+  # creating variables for whether the tweet uses a quote &amp; whether there is a picture/link 
+  mutate(quoted = ifelse(str_detect(text, &#39;^&quot;&#39;), &quot;quote&quot;, &quot;NO_quote&quot;),
+         picture = ifelse(str_detect(text, &quot;t.co&quot;), &quot;picture_link&quot;, &quot;NO_picture_link&quot;)) %&gt;% 
+  select(screen_name, text2, quoted, picture,
+         anticipation, fear, joy, trust, positive)
+
+## Sanity check
+head(drake_test2)</code></pre>
+<pre><code># A tibble: 6 x 9
+  screen_name text2                            quoted picture  anticipation  fear   joy trust positive
+  &lt;chr&gt;       &lt;chr&gt;                            &lt;chr&gt;  &lt;chr&gt;           &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;    &lt;dbl&gt;
+1 Drake       Tune in  https   t co T QExZXh A NO_qu… picture…            0     0     0     0        0
+2 Drake       Fry Yiy https   t co QXlDN OiwW… NO_qu… picture…            0     0     0     0        0
+3 Drake       What s Next  Official Video  ht… NO_qu… picture…            0     0     0     1        0
+4 Drake       SCARY HOURS https   t co kDM vu… NO_qu… picture…            0     0     0     0        0
+5 Drake       Going live tonight at      pm E… NO_qu… picture…            1     0     0     0        2
+6 Drake       SCARY HOURS  Drake  Friday Midn… NO_qu… picture…            0     0     0     0        0</code></pre>
+</div>
+<div id="applying-prediction-algorithm-on-drake-tweets" class="section level4">
+<h4><strong><em>Applying Prediction Algorithm on Drake Tweets</em></strong></h4>
+<pre class="r"><code>## Predicting the train logistical regression model on the drake data
+predicted_drake &lt;- predict(model_train, drake_test2, type=&quot;response&quot;)
+predicted.classes &lt;- ifelse(predicted_drake &gt; 0.5, &quot;Obama&quot;, &quot;Kanye&quot;)
+table(predicted.classes)</code></pre>
+<pre><code>predicted.classes
+Kanye Obama 
+ 1583   164 </code></pre>
+<p>When the original prediction algorithm was used on a data set of tweets posted by Drake, the algorithm classified 91% of the tweets as being Kanye West’s tweets and 9% being Obama’s. Given this result, it would be interesting to look at examples of Drake’s tweets that were classified as Kanye’s vs. Obama’s.</p>
+<pre class="r"><code>drake_test3 &lt;- drake_test2
+drake_test3$predictions &lt;- predicted.classes
+drake_test3 &lt;- drake_test3 %&gt;% 
+  mutate(n = row_number())</code></pre>
+<div id="example-predicted-classification-of-tweet-obama" class="section level5">
+<h5><em>Example:</em> Predicted Classification of Tweet = <strong>Obama</strong></h5>
+<pre class="r"><code>drake_test3 %&gt;% filter(n == 36) %&gt;% 
+  pull(text2)</code></pre>
+<pre><code>[1] &quot;URL x CAFFEINE Excited to announce this major step forward   I managed to get  urltv and  caffeine linked up with the objective of making battle rap easier to access in you home or on your mobile device and it s FREE to watch battles once you sign up  Greatness Simplified  https   t co  XqosqiN Q&quot;</code></pre>
+</div>
+<div id="example-predicted-classification-of-tweet-kanye" class="section level5">
+<h5><em>Example:</em> Predicted Classification of Tweet = <strong>Kanye</strong></h5>
+<pre class="r"><code>drake_test3 %&gt;% filter(n == 121) %&gt;% 
+  pull(text2)</code></pre>
+<pre><code>[1] &quot;To the city I love and the people in it   Thank you for everything  VIEWS https   t co HEXHNwrWwd&quot;</code></pre>
+<p>The first example shows a Drake tweet that was classified as an <em>Obama</em> tweet. This tweet did not begin with a quote/link but included a picture., and its sentiment scores were as follows: anticipation = 4; fear = 1; joy = 2; trust = 3; positive = 5. Given that our algorithm found that pictures and sentiments of anticipation, fear, trust, and positive <em>all</em> increase the odds of a tweet belonging to Obama (versus Kanye), it is unsurprising that example #1 was coded as an Obama tweet. The second example shows a Drake tweet that was classified as a <em>Kanye</em> tweet. This tweet also did not begin with a quote, included a picture, and its sentiment scores were as follows: anticipation = 0; fear = 0; joy = 1; trust = 0; positive = 0. While our algorithm found that a one unit increase in the sentiment score for joy <em>decreases</em> the odds of the tweet being authored by Obama by 68%, it also found that tweets with pictures/links have a ~3,000% greater odds of being Obama’s tweets. As such, this classification seems to be rather odd. All in all, it is clear that our algorithm is only as good as the data it is provided.</p>
+</div>
+</div>
+</div>
 
 
 
